@@ -1,4 +1,3 @@
-// src/server/arweave-server.js
 const ArLocal = require('arlocal').default;
 
 const start = async () => {

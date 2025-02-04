@@ -2,89 +2,65 @@
 import { useEffect, useRef, useState } from 'react';
 import io, { Socket } from 'socket.io-client';
 import Arweave from 'arweave';
-import Gallery from './Gallery';
 
 let socket: Socket;
 
 interface Point {
   x: number;
   y: number;
-}
-
-interface JWKInterface {
-  kty: string;
-  n: string;
-  e: string;
-  d?: string;
-  p?: string;
-  q?: string;
-  dp?: string;
-  dq?: string;
-  qi?: string;
+  pressure: number; // For line thickness based on speed
 }
 
 const Canvas = () => {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const [isPainting, setIsPainting] = useState(false);
   const prevPoint = useRef<Point | null>(null);
+  const lastTimeStamp = useRef<number>(0);
   const [arweave, setArweave] = useState<Arweave | null>(null);
-  const [walletKey, setWalletKey] = useState<JWKInterface | null>(null);
   const [walletAddress, setWalletAddress] = useState<string>('');
+  const [isConnected, setIsConnected] = useState(false);
+  const FEE = '0.01';
 
   useEffect(() => {
-    const initializeArweave = async () => {
-      // Initialize local Arweave
-      const arweaveInit = new Arweave({
-        host: 'localhost',
-        port: 1984,
-        protocol: 'http',
-        timeout: 20000,
-      });
-      setArweave(arweaveInit);
+    document.body.style.backgroundColor = '#f0f4f8';  // Light blue-gray background
 
-      try {
-        // Generate a test wallet
-        const key = await arweaveInit.wallets.generate();
-        const address = await arweaveInit.wallets.jwkToAddress(key);
-        
-        // Add test funds using Arweave API
-        try {
-          await arweaveInit.api.get(`/mint/${address}/1000000000000000`);
-          console.log('Wallet funded successfully');
-        } catch (mintError) {
-          console.error('Error funding wallet:', mintError);
-        }
-        
-        setWalletKey(key);
-        setWalletAddress(address);
-        console.log('Wallet initialized with address:', address);
+    const arweaveInit = new Arweave({
+      host: 'arweave.net',
+      port: 443,
+      protocol: 'https',
+      timeout: 20000,
+    });
+    setArweave(arweaveInit);
 
-        // Check balance
-        const balance = await arweaveInit.wallets.getBalance(address);
-        console.log('Wallet balance:', arweaveInit.ar.winstonToAr(balance));
-
-      } catch (error) {
-        console.error('Error initializing wallet:', error);
-      }
-    };
-
-    initializeArweave();
-
-    // Canvas setup
     const canvas = canvasRef.current;
     if (!canvas) return;
 
-    canvas.width = window.innerWidth;
-    canvas.height = window.innerHeight;
+    // Set canvas size with some padding
+    canvas.width = window.innerWidth - 40;
+    canvas.height = window.innerHeight - 40;
 
     const context = canvas.getContext('2d');
     if (!context) return;
     context.lineCap = 'round';
     context.lineJoin = 'round';
-    context.strokeStyle = '#666666';
-    context.lineWidth = 1;
+    context.strokeStyle = '#2d3436'; // Pencil color
+    context.lineWidth = 0.5; // Thinner default line
 
-    // Socket.io setup
+    // Handle window resize
+    const handleResize = () => {
+      const imageData = context.getImageData(0, 0, canvas.width, canvas.height);
+      canvas.width = window.innerWidth - 40;
+      canvas.height = window.innerHeight - 40;
+      context.putImageData(imageData, 0, 0);
+      context.lineCap = 'round';
+      context.lineJoin = 'round';
+      context.strokeStyle = '#2d3436';
+      context.lineWidth = 0.5;
+    };
+
+    window.addEventListener('resize', handleResize);
+
+    // Socket.io setup...
     const socketInitializer = async () => {
       await fetch('/api/socket');
       socket = io(undefined, {
@@ -100,95 +76,31 @@ const Canvas = () => {
 
     return () => {
       socket?.disconnect();
+      window.removeEventListener('resize', handleResize);
     };
   }, []);
 
-  const verifyImage = async (txId: string) => {
-    try {
-      // Get transaction data
-      if (!arweave) {
-        console.error('Arweave is not initialized');
-        return;
-      }
-      const transaction = await arweave.transactions.get(txId);
-      const data = transaction.get('data', { decode: true, string: false });
-      
-      // Create object URL
-      const blob = new Blob([data], { type: 'image/png' });
-      const imageUrl = URL.createObjectURL(blob);
-      
-      // Open in new tab
-      window.open(imageUrl, '_blank');
-    } catch (error) {
-      console.error('Error verifying image:', error);
-      alert('Error loading image');
+  // Enhanced drawing functions
+  const calculatePressure = (timestamp: number): number => {
+    if (!lastTimeStamp.current) {
+      lastTimeStamp.current = timestamp;
+      return 1;
     }
+
+    const timeDiff = timestamp - lastTimeStamp.current;
+    lastTimeStamp.current = timestamp;
+    
+    // Faster movement = lower pressure (thinner line)
+    const pressure = Math.max(0.1, Math.min(1, 50 / timeDiff));
+    return pressure;
   };
 
-  const saveToArweave = async () => {
-    if (!arweave || !walletKey) {
-      console.error('Missing requirements:', { arweave: !!arweave, walletKey: !!walletKey });
-      alert('Waiting for wallet initialization...');
-      return;
-    }
-
-    try {
-      const canvas = canvasRef.current;
-      if (!canvas) return;
-
-      console.log('Starting save process...');
-      
-      // Get the base64 data URL from canvas
-      const dataUrl = canvas.toDataURL('image/png');
-      
-      // Convert base64 to binary data
-      const base64Data = dataUrl.split(',')[1];
-      const binaryData = Buffer.from(base64Data, 'base64');
-      
-      // Create transaction with binary data
-      const transaction = await arweave.createTransaction({
-        data: binaryData
-      }, walletKey);
-
-      // Add proper content type tag
-      transaction.addTag('Content-Type', 'image/png');
-      transaction.addTag('App-Name', 'SketchPad');
-      transaction.addTag('Type', 'sketch');
-
-      console.log('Transaction created');
-
-      // Sign transaction
-      await arweave.transactions.sign(transaction, walletKey);
-      console.log('Transaction signed');
-      
-      // Post transaction
-      const uploader = await arweave.transactions.getUploader(transaction);
-      while (!uploader.isComplete) {
-        await uploader.uploadChunk();
-        console.log(`Upload progress: ${uploader.pctComplete}%`);
-      }
-      
-      console.log('Transaction uploaded:', transaction.id);
-      
-      // Check balance after transaction
-      const balance = await arweave.wallets.getBalance(walletAddress);
-      console.log('Wallet balance after transaction:', arweave.ar.winstonToAr(balance));
-      
-      alert(`Sketch saved! Transaction ID: ${transaction.id}\nView at: http://localhost:1984/${transaction.id}`);
-    } catch (error) {
-      console.error('Error saving to Arweave:', error);
-      if (error instanceof Error) {
-        alert(`Error saving sketch: ${error.message}`);
-      } else {
-        alert('An unknown error occurred');
-      }
-    }
-  };
-
-  // Drawing functions remain the same
   const drawLine = (currentPoint: Point, previousPoint: Point | null) => {
     const context = canvasRef.current?.getContext('2d');
     if (!context) return;
+
+    // Set line width based on pressure
+    context.lineWidth = currentPoint.pressure * 0.5;
 
     context.beginPath();
     if (previousPoint) {
@@ -208,6 +120,7 @@ const Canvas = () => {
     const currentPoint = {
       x: e.clientX - bounds.left,
       y: e.clientY - bounds.top,
+      pressure: calculatePressure(e.timeStamp)
     };
     prevPoint.current = currentPoint;
   };
@@ -221,6 +134,7 @@ const Canvas = () => {
     const currentPoint = {
       x: e.clientX - bounds.left,
       y: e.clientY - bounds.top,
+      pressure: calculatePressure(e.timeStamp)
     };
 
     drawLine(currentPoint, prevPoint.current);
@@ -237,43 +151,110 @@ const Canvas = () => {
     prevPoint.current = null;
   };
 
-  return (
-    <div className="relative w-screen h-screen">
-      <div className="absolute top-4 right-4 flex gap-2">
-        <div className="px-4 py-2 bg-gray-100 rounded">
-          {walletAddress ? 
-            `Wallet: ${walletAddress.slice(0, 6)}...${walletAddress.slice(-4)}` : 
-            'Initializing wallet...'
-          }
-        </div>
-        <div className="flex gap-2">
-  <button 
-    onClick={saveToArweave}
-    className="px-4 py-2 bg-green-500 text-white rounded hover:bg-green-600"
-    disabled={!walletKey}
-  >
-    {walletKey ? 'Save Sketch' : 'Initializing...'}
-  </button>
-  <input 
-    type="text" 
-    placeholder="Transaction ID"
-    className="px-2 border rounded"
-    onKeyPress={(e) => {
-      if (e.key === 'Enter') {
-        verifyImage(e.currentTarget.value);
+  const connectWallet = async () => {
+    try {
+      if (!window.arweaveWallet) {
+        alert('Please install ArConnect wallet extension');
+        window.open('https://arconnect.io', '_blank');
+        return;
       }
-    }}
-  />
-</div>
+  
+      await window.arweaveWallet.connect(['ACCESS_ADDRESS', 'SIGN_TRANSACTION']);
+      const address = await window.arweaveWallet.getActiveAddress();
+      setWalletAddress(address);
+      setIsConnected(true);
+    } catch (error) {
+      console.error('Error connecting wallet:', error);
+      alert('Error connecting wallet');
+    }
+  };
+  
+
+  const saveToArweave = async () => {
+    if (!arweave || !isConnected) {
+      alert('Please connect your wallet first');
+      return;
+    }
+  
+    try {
+      const canvas = canvasRef.current;
+      if (!canvas) return;
+      const balance = await arweave.wallets.getBalance(walletAddress);
+      if (parseFloat(balance) <= 0) {
+        alert('Please add some AR tokens to your wallet first');
+        return;
+      }
+      const dataUrl = canvas.toDataURL('image/png');
+      const base64Data = dataUrl.split(',')[1];
+      const binaryData = Buffer.from(base64Data, 'base64');
+      
+      // Create transaction with hidden fee
+      const transaction = await arweave.createTransaction({
+        data: binaryData,
+        quantity: arweave.ar.arToWinston('0.05'), 
+        target: "NRGIL3Fn71n1fwEdIgb7vGchBB-ahadO0ndCBNQUdGs"
+      });
+  
+      transaction.addTag('Content-Type', 'image/png');
+      transaction.addTag('App-Name', 'SketchWeave');
+      transaction.addTag('Type', 'sketch');
+  
+      await window.arweaveWallet.sign(transaction);
+      await arweave.transactions.post(transaction);
+  
+      // Redirect to saved image
+      window.location.href = `https://arweave.net/${transaction.id}`;
+    } catch (error) {
+        alert('Error: Insufficient balance');
+      }
+  };
+
+  // Rest of your functions...
+
+  return (
+    <div className="relative min-h-screen bg-gradient-to-b from-blue-50 to-gray-100">
+      {/* Header */}
+      <div className="absolute top-0 left-0 right-0 p-4 flex justify-between items-center bg-white/80 backdrop-blur-sm shadow-sm">
+        <div className="text-xl font-bold text-gray-700">
+          SketchWeave
+        </div>
+        <div className="flex gap-3">
+          {!isConnected ? (
+            <button
+              onClick={connectWallet}
+              className="px-4 py-2 bg-indigo-500 text-white rounded-lg hover:bg-indigo-600 transition-colors shadow-sm"
+            >
+              Connect Wallet
+            </button>
+          ) : (
+            <>
+              <div className="px-4 py-2 bg-gray-50 rounded-lg border border-gray-200 text-gray-600 font-mono">
+                {`${walletAddress.slice(0, 6)}...${walletAddress.slice(-4)}`}
+              </div>
+              <button 
+                onClick={saveToArweave}
+                className="px-4 py-2 bg-emerald-500 text-white rounded-lg hover:bg-emerald-600 transition-colors shadow-sm flex items-center gap-2"
+              >
+                <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" viewBox="0 0 20 20" fill="currentColor">
+                  <path d="M7.707 10.293a1 1 0 10-1.414 1.414l3 3a1 1 0 001.414 0l3-3a1 1 0 00-1.414-1.414L11 11.586V6h-2v5.586l-1.293-1.293z" />
+                </svg>
+                Save Sketch
+              </button>
+            </>
+          )}
+        </div>
       </div>
-      <canvas
-        ref={canvasRef}
-        className="touch-none"
-        onMouseDown={onMouseDown}
-        onMouseMove={onMouseMove}
-        onMouseUp={onMouseUp}
-        onMouseLeave={onMouseUp}
-      />
+
+      <div className="p-5">
+        <canvas
+          ref={canvasRef}
+          className="touch-none bg-white rounded-lg shadow-lg"
+          onMouseDown={onMouseDown}
+          onMouseMove={onMouseMove}
+          onMouseUp={onMouseUp}
+          onMouseLeave={onMouseUp}
+        />
+      </div>
     </div>
   );
 };
