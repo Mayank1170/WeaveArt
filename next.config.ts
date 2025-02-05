@@ -1,7 +1,22 @@
-import type { NextConfig } from "next";
+/** @type {import('next').NextConfig} */
+interface WebpackConfig {
+  externals: Record<string, string>[];
+}
+
+interface NextConfig {
+  reactStrictMode: boolean;
+  webpack: (config: WebpackConfig) => WebpackConfig;
+}
 
 const nextConfig: NextConfig = {
-  /* config options here */
+  reactStrictMode: true,
+  webpack: (config) => {
+    config.externals.push({
+      'utf-8-validate': 'commonjs utf-8-validate',
+      'bufferutil': 'commonjs bufferutil',
+    });
+    return config;
+  },
 };
-
-export default nextConfig;
+  
+  module.exports = nextConfig;
