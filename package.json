@@ -10,6 +10,7 @@
     "arlocal": "node src/server/arweave-server.js"
   },
   "dependencies": {
+    "@vercel/analytics": "^1.4.1",
     "arweave": "^1.15.5",
     "concurrently": "^8.2.0",
     "next": "15.1.6",
