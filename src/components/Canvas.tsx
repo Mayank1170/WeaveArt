@@ -19,7 +19,7 @@ const Canvas = () => {
   const [arweave, setArweave] = useState<Arweave | null>(null);
   const [walletAddress, setWalletAddress] = useState<string>('');
   const [isConnected, setIsConnected] = useState(false);
-  const FEE = '0.01';
+  // const FEE = '0.01';
 
   useEffect(() => {
     document.body.style.backgroundColor = '#f0f4f8';  // Light blue-gray background
@@ -205,7 +205,7 @@ const Canvas = () => {
       // Redirect to saved image
       window.location.href = `https://arweave.net/${transaction.id}`;
     } catch (error) {
-        alert('Error: Insufficient balance');
+        alert(`Error: Insufficient balance ${error}`);
       }
   };
 

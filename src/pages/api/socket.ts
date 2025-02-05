@@ -1,8 +1,19 @@
 // src/pages/api/socket.ts
 import { Server as NetServer } from 'http';
-import { NextApiRequest } from 'next';
+import { NextApiRequest, NextApiResponse } from 'next';
 import { Server as ServerIO } from 'socket.io';
-import { NextApiResponseServerIO } from '@/types/socket';
+
+interface ServerType extends NetServer {
+  io?: ServerIO;
+}
+
+import { Socket } from 'net';
+
+interface SocketResponse extends NextApiResponse {
+  socket: Socket & {
+    server: ServerType;
+  };
+}
 
 export const config = {
   api: {
@@ -10,14 +21,14 @@ export const config = {
   },
 };
 
-const SocketHandler = (req: NextApiRequest, res: NextApiResponseServerIO) => {
+const SocketHandler = (req: NextApiRequest, res: SocketResponse) => {
   if (res.socket.server.io) {
     console.log('Socket server already running');
     res.end();
     return;
   }
 
-  const httpServer: NetServer = res.socket.server as any;
+  const httpServer: ServerType = res.socket.server;
   const io = new ServerIO(httpServer, {
     path: '/api/socket',
   });
@@ -26,14 +37,6 @@ const SocketHandler = (req: NextApiRequest, res: NextApiResponseServerIO) => {
 
   io.on('connection', (socket) => {
     console.log(`User Connected: ${socket.id}`);
-
-    // Broadcast the new cursor position to all other clients
-    socket.on('cursor-move', (data) => {
-      socket.broadcast.emit('cursor-move', {
-        id: socket.id,
-        ...data,
-      });
-    });
 
     // Broadcast new drawing data to all other clients
     socket.on('draw-line', (data) => {

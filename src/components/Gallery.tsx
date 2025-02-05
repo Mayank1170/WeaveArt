@@ -1,6 +1,5 @@
 // src/components/Gallery.tsx
 import { useState, useEffect } from "react";
-import Arweave from "arweave";
 
 interface Sketch {
   id: string;
@@ -14,11 +13,11 @@ const Gallery = ({ walletAddress }: { walletAddress: string }) => {
     if (!walletAddress) return;
 
     const fetchSketches = async () => {
-      const arweave = new Arweave({
-        host: "testnet.redstone.tools",
-        port: 443,
-        protocol: "https",
-      });
+      // const arweave = new Arweave({
+      //   host: "testnet.redstone.tools",
+      //   port: 443,
+      //   protocol: "https",
+      // });
 
       try {
         // GraphQL query to fetch sketches
@@ -49,7 +48,7 @@ const Gallery = ({ walletAddress }: { walletAddress: string }) => {
 
         const data = await response.json();
         const fetchedSketches = data.data.transactions.edges.map(
-          (edge: any) => ({
+          (edge: { node: { id: string; block: { timestamp: number } } }) => ({
             id: edge.node.id,
             timestamp: edge.node.block?.timestamp || Date.now(),
           })
