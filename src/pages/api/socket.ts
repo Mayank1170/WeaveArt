@@ -45,7 +45,7 @@ const SocketHandler = (req: NextApiRequest, res: SocketResponse) => {
   res.socket.server.io = io;
 
   // Track connected users
-  let connectedUsers = new Map();
+  const connectedUsers = new Map();
 
   io.on('connection', (socket) => {
     console.log(`👤 User Connected: ${socket.id}`);

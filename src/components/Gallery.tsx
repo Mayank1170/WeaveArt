@@ -88,7 +88,14 @@ const Gallery = ({ walletAddress }: { walletAddress: string }) => {
       }
 
       const fetchedSketches: Sketch[] = result.data.transactions.edges.map(
-        (edge: any) => ({
+        (edge: {
+          node: {
+            id: string;
+            block?: { timestamp?: number };
+            owner?: { address?: string };
+            tags?: { name: string; value: string }[];
+          };
+        }) => ({
           id: edge.node.id,
           timestamp: edge.node.block?.timestamp
             ? edge.node.block.timestamp * 1000
@@ -141,17 +148,25 @@ const Gallery = ({ walletAddress }: { walletAddress: string }) => {
 
         if (fallbackResult.data?.transactions?.edges) {
           const allTransactions = fallbackResult.data.transactions.edges;
-          const sketchTransactions = allTransactions.filter((edge: any) => {
-            const tags = edge.node.tags || [];
-            return tags.some(
-              (tag: any) =>
-                tag.name === "App-Name" &&
-                (tag.value === "SketchWeave" || tag.value === "SketchPad")
-            );
-          });
+          const sketchTransactions = allTransactions.filter(
+            (edge: { node: { tags?: { name: string; value: string }[] } }) => {
+              const tags = edge.node.tags || [];
+              return tags.some(
+                (tag: { name: string; value: string }) =>
+                  tag.name === "App-Name" &&
+                  (tag.value === "SketchWeave" || tag.value === "SketchPad")
+              );
+            }
+          );
 
           const fallbackSketches: Sketch[] = sketchTransactions.map(
-            (edge: any) => ({
+            (edge: {
+              node: {
+                id: string;
+                block?: { timestamp?: number };
+                tags?: { name: string; value: string }[];
+              };
+            }) => ({
               id: edge.node.id,
               timestamp: edge.node.block?.timestamp
                 ? edge.node.block.timestamp * 1000
@@ -175,7 +190,7 @@ const Gallery = ({ walletAddress }: { walletAddress: string }) => {
 
   useEffect(() => {
     fetchSketches();
-  }, [walletAddress]);
+  }, [walletAddress, fetchSketches]);
 
   const formatDate = (timestamp: number) => {
     return new Date(timestamp).toLocaleDateString("en-US", {

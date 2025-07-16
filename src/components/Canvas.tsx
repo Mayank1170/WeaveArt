@@ -2,6 +2,7 @@
 import { useEffect, useRef, useState } from "react";
 import io, { Socket } from "socket.io-client";
 import Arweave from "arweave";
+import Image from "next/image";
 
 let socket: Socket;
 
@@ -32,8 +33,7 @@ const Canvas = () => {
   const [saving, setSaving] = useState(false);
 
   // Socket states
-  const [socketConnected, setSocketConnected] = useState(false);
-  const [userCount, setUserCount] = useState(1);
+  const [userCount] = useState(1);
   const [showUserCount, setShowUserCount] = useState(true);
 
   // UI states
@@ -81,12 +81,10 @@ const Canvas = () => {
         socket = io(undefined, { path: "/api/socket" });
 
         socket.on("connect", () => {
-          setSocketConnected(true);
           console.log("✅ Connected to socket");
         });
 
         socket.on("disconnect", () => {
-          setSocketConnected(false);
           console.log("❌ Disconnected from socket");
         });
 
@@ -442,9 +440,11 @@ const Canvas = () => {
                       key={sketch.id}
                       className="border rounded-lg p-3 bg-gray-50"
                     >
-                      <img
+                      <Image
                         src={sketch.dataUrl}
                         alt={sketch.title}
+                        width={256}
+                        height={128}
                         className="w-full h-32 object-contain bg-white rounded mb-2"
                       />
                       <div className="space-y-2">
